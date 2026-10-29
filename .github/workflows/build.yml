@@ -51,15 +51,17 @@ jobs:
       - name: Configure (pmOS armv7 base + initramfs overrides)
         run: |
           cp kernel-release.config linux/.config
+          cd linux
           # initramfs must bring up USB NCM without a rootfs: force builtin
-          sed -i 's/^CONFIG_USB_CONFIGFS=m/CONFIG_USB_CONFIGFS=y/' linux/.config
-          sed -i 's/^CONFIG_USB_F_NCM=m/CONFIG_USB_F_NCM=y/' linux/.config
+          scripts/config --enable USB_CONFIGFS --enable USB_F_NCM
           # The stock 8909 aboot loads the kernel at 0x80008000 and reserves
           # ~0x6F8000 bytes before its own memory at 0x80700000.  A gzip
           # zImage (7.43 MB) overflows it and aboot drops to download mode;
           # XZ keeps the zImage ~4.5 MB (verified fit for the budget).
-          sed -i 's/^CONFIG_KERNEL_GZIP=y/CONFIG_KERNEL_XZ=y/' linux/.config
-          cd linux
+          scripts/config --enable KERNEL_XZ --disable KERNEL_GZIP
+          make ARCH=arm CROSS_COMPILE="$CROSS" olddefconfig
+          # settle the choice (olddefconfig may flip unknown states to default)
+          scripts/config --enable KERNEL_XZ --disable KERNEL_GZIP
           make ARCH=arm CROSS_COMPILE="$CROSS" olddefconfig
           f() { grep -E "^$1" .config || echo "MISSING $1"; }
           f CONFIG_USB_CONFIGFS=
@@ -69,7 +71,11 @@ jobs:
           f CONFIG_EXT4_FS=
           f CONFIG_MMC_BLOCK=
           f CONFIG_PINCTRL_MSM8909=
-          f CONFIG_KERNEL_XZ=
+          # hard gate: XZ must actually stick, otherwise zImage stays too
+          # large and the stock bootloader rejects the image
+          test "$(grep -c '^CONFIG_KERNEL_XZ=y$' .config)" = 1 \
+            || { echo 'FATAL: CONFIG_KERNEL_XZ=y did not stick'; grep -nE 'KERNEL_(GZIP|XZ|LZMA|LZO|LZ4)' .config; exit 1; }
+          grep -q '^CONFIG_KERNEL_GZIP=y$' .config && { echo 'FATAL: KERNEL_GZIP still selected'; exit 1; } || true
 
       - name: Build kernel + dtb
         run: |
