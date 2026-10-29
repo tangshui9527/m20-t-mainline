@@ -1,0 +1,75 @@
+#!/bin/busybox sh
+# initramfs /init for m20-t-mainline -- RAM-root rescue/control stage.
+#
+# Goal (phase 1): prove the mainline kernel boots on the Hisense M20-T and
+# expose a shell over USB (NCM gadget, telnet on 172.16.42.1:23).
+#
+# USB host side:  interface NCM, host addr 172.16.42.2/24, then
+#   telnet 172.16.42.1
+#
+# All USB gadget pieces (mainline kernel) are built-in: ci-hdrc UDC,
+# configfs (CONFIG_USB_CONFIGFS=y) and USB_F_NCM=y.
+
+export PATH=/bin:/sbin
+
+/busybox --install -s /bin 2>/dev/null
+
+# --- basic mounts -----------------------------------------------------------
+mkdir -p /proc /sys /dev /tmp /config /dev/pts /run
+busybox mount -t proc     none     /proc
+busybox mount -t sysfs    none     /sys
+busybox mount -t devtmpfs none     /dev 2>/dev/null || busybox mdev -s
+busybox mount -t devpts   none     /dev/pts
+busybox mount -t tmpfs    none     /tmp
+busybox mount -t configfs none     /config
+
+# --- USB NCM gadget ---------------------------------------------------------
+{
+    echo "== m20-t-mainline initramfs =="
+    date -u
+    echo "kernel: $(uname -a)"
+    echo "udc candidates: $(ls /sys/class/udc/ 2>&1)"
+} > /tmp/boot.log
+
+LOG=/tmp/boot.log
+
+setup_ncm() {
+    mkdir -p /config/usb_gadget/g1 || { echo "configfs mkdir failed" >> $LOG; return 1; }
+    cd /config/usb_gadget/g1
+    echo 0x1381 > idVendor      # Hisense VID (placeholder, purely cosmetic)
+    echo 0x0020 > idProduct
+    mkdir -p strings/0x409
+    echo m20t-mainline    > strings/0x409/manufacturer
+    echo m20t-initramfs   > strings/0x409/product
+    mkdir -p functions/ncm.usb0
+    mkdir -p configs/c.1
+    echo 250 > configs/c.1/MaxPower
+    ln -sf functions/ncm.usb0 configs/c.1/ncm
+    UDC=$(ls /sys/class/udc | head -n 1)
+    [ -n "$UDC" ] || { echo "no UDC present" >> $LOG; return 1; }
+    echo "$UDC" > UDC || { echo "UDC bind failed" >> $LOG; return 1; }
+    sleep 1
+    busybox ifconfig usb0 172.16.42.1 netmask 255.255.255.0 up 2>>$LOG \
+        || { echo "ifconfig usb0 failed" >> $LOG; return 1; }
+    return 0
+}
+
+if setup_ncm; then
+    echo "USB NCM gadget UP: 172.16.42.1" >> $LOG
+else
+    echo "USB NCM gadget setup failed, log:" >> $LOG
+    echo "---- dmesg tail ----" >> $LOG
+    busybox dmesg | busybox tail -40 >> $LOG 2>/dev/null
+fi
+
+# telnetd regardless of interface state (rebind later is still possible
+# from the shell with /etc/setup-ncm.sh)
+busybox telnetd -l /bin/sh -b 0.0.0.0:23
+
+# --- keep console alive -----------------------------------------------------
+echo
+echo "m20-t-mainline initramfs shell (console + telnetd 0.0.0.0:23)"
+if [ -e /proc/cmdline ]; then
+    grep -q m20tlin=1 /proc/cmdline && echo "(stock-marker cmdline detected -- stock kernel space)"
+fi
+exec setsid cttyhack /bin/sh

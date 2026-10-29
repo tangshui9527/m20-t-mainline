@@ -1,0 +1,177 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Hisense M20-T (Uniscope ODM, MSM8909 + PM8909).
+ *
+ * Headless port: no display/touch/audio/keypad -- the device serves as a
+ * boot-and-serve mini rootfs host (Alpine armhf) with WiFi + SSH.
+ *
+ * Root node qcom,msm-id / qcom,board-id are copied verbatim from the stock
+ * bootloader's DT blob (the entry the stock aboot actually selects for this
+ * hardware: "MSM8909-PM8909 1GB QRD SKUA", soc_id=245/0xf5,
+ * platform_version=0x10000, hw_platform=QRD, subtype=0), because the stock
+ * aboot (not lk2nd) picks the DTB by matching these ids against SMEM values.
+ *
+ * Board template: qcom-msm8909-fareastone-smart506.dts (same SoC/PMIC
+ * family); WiFi = wcn3620; USB controller is ci-hdrc (from qcom-msm8909.dtsi).
+ */
+
+/dts-v1/;
+
+#include "qcom-msm8909-pm8909.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "Hisense M20-T";
+	compatible = "hisense,m20-t", "qcom,msm8909";
+	chassis-type = "handset";
+
+	/* Stock bootloader DT-matching ids (see comment above). */
+	qcom,msm-id = <0xf5 0x0 0x102 0x0 0x109 0x0 0x113 0x0>;
+	qcom,board-id = <0x1000b 0x0>;
+
+	aliases {
+		serial0 = &blsp_uart1;
+	};
+
+	chosen {
+		stdout-path = "serial0";
+	};
+
+	battery: battery {
+		compatible = "simple-battery";
+		voltage-min-design-microvolt = <3400000>;
+		voltage-max-design-microvolt = <4350000>;
+		energy-full-design-microwatt-hours = <7300000>;
+		charge-full-design-microamp-hours = <2000000>;
+	};
+};
+
+&blsp_uart1 {
+	status = "okay";
+};
+
+&pm8909_bms {
+	monitored-battery = <&battery>;
+	power-supplies = <&pm8909_charger>;
+	status = "okay";
+};
+
+&pm8909_charger {
+	qcom,vdd-safe = <4400000>;
+	qcom,ibat-safe = <360000>;
+
+	monitored-battery = <&battery>;
+
+	status = "okay";
+};
+
+&sdhc_1 {
+	status = "okay";
+};
+
+&usb {
+	extcon = <&pm8909_charger>;
+	status = "okay";
+};
+
+&usb_hs_phy {
+	extcon = <&pm8909_charger>;
+};
+
+&wcnss {
+	status = "okay";
+};
+
+&wcnss_iris {
+	compatible = "qcom,wcn3620";
+};
+
+&smd_rpm_regulators {
+	s2 {
+		regulator-min-microvolt = <1850000>;
+		regulator-max-microvolt = <1850000>;
+	};
+
+	l1 {
+		regulator-min-microvolt = <1000000>;
+		regulator-max-microvolt = <1000000>;
+	};
+
+	l2 {
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+	};
+
+	l4 {
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+	};
+
+	l5 {
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+	};
+
+	l6 {
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+	};
+
+	l7 {
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+	};
+
+	l8 {
+		regulator-min-microvolt = <2850000>;
+		regulator-max-microvolt = <2900000>;
+	};
+
+	l9 {
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
+	l10 {
+		regulator-min-microvolt = <1225000>;
+		regulator-max-microvolt = <1300000>;
+	};
+
+	l11 {
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <2950000>;
+		regulator-allow-set-load;
+		regulator-system-load = <200000>;
+	};
+
+	l12 {
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <2950000>;
+	};
+
+	l13 {
+		regulator-min-microvolt = <3075000>;
+		regulator-max-microvolt = <3075000>;
+	};
+
+	l14 {
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <3000000>;
+	};
+
+	l15 {
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <3000000>;
+	};
+
+	l17 {
+		regulator-min-microvolt = <2850000>;
+		regulator-max-microvolt = <2850000>;
+	};
+
+	l18 {
+		regulator-min-microvolt = <2700000>;
+		regulator-max-microvolt = <2700000>;
+	};
+};

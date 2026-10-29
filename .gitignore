@@ -1,0 +1,6 @@
+# CI/build products -- reproduced by CI, not tracked
+initramfs/initramfs.cpio.gz
+*.img
+modules.tar.xz
+out/
+.DS_Store
