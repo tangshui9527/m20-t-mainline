@@ -74,11 +74,13 @@ jobs:
 
       - name: Build modules
         run: |
+          ROOT="$PWD"
           cd linux
           make -j"$(nproc)" ARCH=arm CROSS_COMPILE="$CROSS" modules
-          make ARCH=arm INSTALL_MOD_PATH="$PWD/../modout" modules_install
-          tar -C modout -caf ../modules.tar.xz lib/modules
-          ls -l ../modules.tar.xz
+          make ARCH=arm INSTALL_MOD_PATH="$ROOT/modout" modules_install
+          cd "$ROOT"
+          tar -C modout -caf modules.tar.xz lib/modules
+          ls -l modules.tar.xz
 
       - name: Build initramfs
         run: bash initramfs/build.sh
