@@ -38,7 +38,38 @@
 		stdout-path = "serial0";
 	};
 
-	battery: battery {
+	/*
+ * Memory node MUST be named plain "memory" (no unit address). The stock aboot
+ * update_device_tree() does fdt_path_offset("/memory") + fdt_setprop(reg) to
+ * inject the detected DDR size (reverse-engineered 2026-10-31, aboot
+ * @0x8f613414: "/memory" string @0x4d3b0; "memory@80000000" does NOT match
+ * that exact-path lookup). With the dtsi's "memory@80000000" placeholder
+ * (reg size 0) the injection is skipped and the kernel boots with zero RAM.
+ * The dtsi placeholder node stays around (zero-size, ignored by the kernel);
+ * the 1 GiB value below is only a fallback in case injection is skipped.
+ */
+memory {
+	device_type = "memory";
+	reg = <0x80000000 0x40000000>;
+};
+
+reserved-memory {
+	/* Top 1 MiB of DDR: pstore ramoops, survives warm reset. Free on this
+	 * device (stock carveouts top out at 0x8c100000, see forensics). When
+	 * booting the stock boot.img for rescue, keep the stock kernel away
+	 * with: memmap=0x100000$0xbff00000 appended to its cmdline. */
+	ramoops@bff00000 {
+		compatible = "ramoops";
+		reg = <0xbff00000 0x100000>;
+		no-map;
+		console-size = <0x40000>;
+		record-size = <0x20000>;
+		pmsg-size = <0x20000>;
+		ecc-size = <0>;
+	};
+};
+
+battery: battery {
 		compatible = "simple-battery";
 		voltage-min-design-microvolt = <3400000>;
 		voltage-max-design-microvolt = <4350000>;

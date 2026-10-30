@@ -99,11 +99,18 @@ jobs:
 
       - name: Pack boot image
         run: |
+          # aboot dev_tree_validate() requires the dtbTool "QCDT" table magic in the
+          # DT segment; a bare FDT blob is rejected ("Bad magic in device tree table")
+          # and the device falls back to fastboot (d00d) without ever launching the
+          # kernel. Wrap the DTB before packing. See tools/wrap-dt-qcdt.py.
+          python3 tools/wrap-dt-qcdt.py wrap \
+            linux/arch/arm/boot/dts/qcom/qcom-msm8909-hisense-m20t.dtb \
+            qcom-msm8909-hisense-m20t.qcdt
           python3 tools/mkbootimg.py \
             --kernel linux/arch/arm/boot/zImage \
             --ramdisk initramfs/initramfs.cpio.gz \
-            --dtb linux/arch/arm/boot/dts/qcom/qcom-msm8909-hisense-m20t.dtb \
-            --cmdline 'console=ttyHSL0,115200,n8' \
+            --dtb qcom-msm8909-hisense-m20t.qcdt \
+            --cmdline 'console=ttyHSL0,115200,n8 earlyprintk panic=10' \
             --bootimg m20t-boot.img
           ls -l m20t-boot.img
           [ "$(stat -c%s m20t-boot.img)" -lt 33554432 ] || { echo "BOOT IMAGE TOO BIG (boot part = 32MiB)"; exit 1; }
