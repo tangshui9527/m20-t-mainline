@@ -1,0 +1,30 @@
+name: rescue-binary
+# Builds the tiny static ARM update-binary used by tools/build-rescue-zip.sh
+# to sideload a rescue zip through the stock 4.4 recovery.
+on:
+  push:
+    paths:
+      - tools/rescue-updater.c
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM cross toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-arm-linux-gnueabihf
+      - name: Build static updater
+        run: |
+          arm-linux-gnueabihf-gcc -static -O2 -Wall -Wextra \
+            -march=armv7-a+fp -mfpu=vfpv3-d16 -mfloat-abi=hard \
+            -o rescue-updater tools/rescue-updater.c
+          arm-linux-gnueabihf-strip rescue-updater
+          ls -l rescue-updater
+          file rescue-updater
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rescue-updater
+          path: rescue-updater
