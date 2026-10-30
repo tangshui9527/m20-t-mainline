@@ -1,5 +1,11 @@
 # Flashing / operating checklist — Hisense M20-T mainline boot
 
+> **2026-10-31:** the primary boot route is now **lk2nd** (flashed at `boot`
+> offset 0; kernel images go to `boot + 512 KiB` via `fastboot flash boot`).
+> The root+dd flow below remains valid for the stock-aboot route and for
+> recovery (EDL write of the stock `boot` backup). See the README for the
+> current status.
+
 Device facts proven on 2026-10-29 (serial `2f339cef`):
 
 * `boot` partition = `/dev/block/bootdevice/by-name/boot`, **32 MiB**,

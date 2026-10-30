@@ -1,60 +1,73 @@
 # m20-t-mainline
 
 Mainline Linux for the **Hisense M20-T** (Uniscope ODM, **MSM8909 / Snapdragon 210**,
-stock Android 4.4.4). Target system: a minimal **headless Alpine armhf mini-server** that
-boots itself, joins the configured WiFi automatically and is reached over SSH.
-No display / touch / audio work — the phone acts as a boot-and-serve box.
+stock Android 4.4.4, soc_id 245/0xf5). Target system: a minimal **headless Linux
+server** (USB network + SSH, WiFi later) — no display / touch / audio work —
+the phone acts as a boot-and-serve box.
 
-Built entirely with GitHub Actions on a **public** fork-friendly pipeline:
+## Status (2026-10-31)
 
-* kernel: [msm8916-mainline/linux](https://github.com/msm8916-mainline/linux) tag
-  `v6.12.1-msm8916` (contains full msm8909 SoC support) + pmOS armv7
-  `config-postmarketos-qcom-msm8916`
-* board DT: `device/qcom-msm8909-hisense-m20t.dts` derived from the
-  `fareastone-smart506` sibling; root-node `qcom,msm-id` / `qcom,board-id` copied
-  verbatim from the stock bootloader's actually-selected DTB entry
-  (MSM8909-PM8909 1GB QRD SKUA — soc_id 245/0xf5, QRD subtype 0)
-* boot image: `tools/mkbootimg.py` (Android v0 header, page 2048, single DTB in
-  the `dt_size` slot)
-* phase-1 test initramfs: static busybox (Alpine), `/proc /sys` + USB NCM gadget
-  (configfs, **built into the kernel** for this phase) + `telnetd`;
-  from the USB-host side: `telnet 172.16.42.1` (host IP `172.16.42.2/24`)
+**Boot chain working end to end up to the kernel; the kernel itself hangs early.**
 
-## Installation (device side)
+* stock bootloader (untouched) → **[lk2nd](https://github.com/msm8916-mainline/lk2nd)
+  23.1** `lk2nd-msm8909` flashed into the `boot` partition at offset 0 — works:
+  full fastboot, boot menu, display panel driven by lk2nd
+* mainline kernel images are RAM-booted via `fastboot boot` through lk2nd for
+  testing (no flashing per iteration; the device auto-returns to lk2nd fastboot
+  after a failed boot)
+* kernel base switched to the proven msm8909 line: [weikaizhi4/linux](https://github.com/weikaizhi4/linux)
+  @ `410d5647` (7.0-based; nokia-leo / lenovo-p5100 / zte-sapphire / zu02-dw01
+  msm8909 boards boot this tree) + the [ufi210-debian](https://github.com/3899/ufi210-debian)
+  reference config (validated on the same SoC, soc_id 245)
+* **current blocker:** the kernel hangs in early boot (not a panic — verified by
+  a `panic=-1` experiment; lk2nd's watchdog resets it ~10 s in). A DEBUG_LL
+  "RAM console" patch (earlyprintk → fixed RAM buffer at phys 0x8f001000) is in
+  the build to capture the early boot log; read-back happens from stock Android
+  via `/dev/mem`.
 
-The M20-T bootloader has **no fastboot flash/boot/unlock commands** (verified by
-memory-string analysis). Installation is done from the stock rooted Android:
+## Build
 
-```
-adb push m20t-boot.img /data/local/tmp/
-adb shell "su -c 'chmod 644 /data/local/tmp/m20t-boot.img'"
-adb shell "su -c 'dd if=/data/local/tmp/m20t-boot.img of=/dev/block/bootdevice/by-name/boot bs=4096 && sync'"
-adb reboot
-```
+GitHub Actions on push — see `.github/workflows/build.yml`. Artifacts:
+`m20t-boot.img` (lk2nd layout, raw zu02 DTB), `m20t-qcom-msm8909-nokia-leo.img`
+(board-bisection variant), `zImage`, DTB, modules, initramfs.
 
-The stock bootloader **accepts unsigned boot images** (verified on-device:
-stock kernel repacked with a cmdline marker booted normally). Keep a copy of the
-stock `boot.img` — restoring Android boot = writing that back with the same dd.
+## Boot chain notes (M20-T specific, reverse-engineered)
 
-See `docs/install.md` for the full checklist (partition hashes, telnet usage).
+* stock `aboot` requires the DT segment of a boot image to be a **dtbTool
+  "QCDT" table** (magic `0x54444351`); a bare FDT blob is rejected
+  ("Bad magic in device tree table") and the device falls back to its own
+  fastboot (USB `18d1:d00d`) without ever launching the kernel —
+  `tools/wrap-dt-qcdt.py` wraps a DTB into a QCDT v3 single-entry table
+  (`soc=0xf5, board=0x1000b, subtype=0`, the stock-selected dtb17 entry)
+* the stock aboot injects `bootargs`/initrd and the **DDR size into a node
+  named exactly `/memory`** (exact-path lookup; `memory@80000000` does not
+  match) — keep that node name in any board DTS
+* lk2nd occupies the first 512 KiB of `boot`; the real boot image is flashed
+  at `boot + 512 KiB` (`fastboot flash boot` handles the offset)
+* lk2nd needs the QCDT wrapper too (`fastboot boot` with a bare-DTB image is
+  rejected with "dtb not found")
+* the stock bootloader accepts unsigned boot images (no secboot fuse blown);
+  no fastboot flash/boot commands exist in stock (getvar/download only)
 
 ## Repo layout
 
 | path | content |
 |---|---|
-| `device/qcom-msm8909-hisense-m20t.dts` | board device tree (headless subset) |
-| `tools/mkbootimg.py` | Android boot image packer |
-| `initramfs/` | phase-1 RAM-root rescue initramfs (WiFi/rootfs phase arrives later) |
-| `kernel-release.config` | pmOS armv7 kernel config used as `.config` base |
-| `rootfs/` | (future) Alpine rootfs assembly + persistence on userdata |
-| `.github/workflows/build.yml` | CI: kernel+dtb+modules+initramfs+image |
+| `device/qcom-msm8909-hisense-m20t.dts` | board device tree (6.12-era; port to the 7.0 tree pending — see `patches-msm8909-zu02-dw01.patch` for the minimal-board pattern) |
+| `configs/msm8909-reference.config` | kernel config proven on soc_id 245 by ufi210-debian |
+| `patches-msm8909-zu02-dw01.patch` | minimal 8909 board dts + imem reboot-mode pattern (applies to the 7.0 tree) |
+| `kernel-romconsole.patch` | DEBUG_LL → RAM console (early-hang post-mortem) |
+| `tools/` | mkbootimg, QCDT wrapper |
+| `initramfs/` | RAM-root initramfs: USB NCM gadget (builtin) + telnetd; host side `telnet 172.16.42.1` (host IP `172.16.42.2/24`) |
+| `.github/workflows/build.yml` | CI: kernel+dtb+modules+initramfs+images |
 
-## Status
+## Installation / recovery
 
-* [x] bootloader path proven (root + dd, unsigned images boot)
-* [x] kernel base selected, board ids extracted from stock blob
-* [ ] **first CI build → flash → telnet shell (phase 1)**
-* [ ] phase 2: Alpine rootfs on userdata, wpa_supplicant (WiFi), dropbear
-* [ ] phase 3: hardening, auto-recovery watchdog
+lk2nd route: flash `lk2nd-msm8909.img` (from
+[msm8916-mainline/lk2nd releases](https://github.com/msm8916-mainline/lk2nd/releases))
+to `boot`, then `fastboot flash boot m20t-boot.img` under lk2nd.
+Stock route (root+dd) and full partition forensics: `docs/install.md`.
+Recovery from any state: EDL (9008) firehose write of the stock `boot`
+partition backup.
 
 License: GPL-2.0-only (kernel-adjacent tooling; DTS via upstream).
