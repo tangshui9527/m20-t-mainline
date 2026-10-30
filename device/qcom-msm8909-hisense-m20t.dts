@@ -54,18 +54,14 @@ memory {
 };
 
 reserved-memory {
-	/* Top 1 MiB of DDR: pstore ramoops, survives warm reset. Free on this
-	 * device (stock carveouts top out at 0x8c100000, see forensics). When
-	 * booting the stock boot.img for rescue, keep the stock kernel away
-	 * with: memmap=0x100000$0xbff00000 appended to its cmdline. */
-	ramoops@bff00000 {
-		compatible = "ramoops";
-		reg = <0xbff00000 0x100000>;
-		no-map;
-		console-size = <0x40000>;
-		record-size = <0x20000>;
-		pmsg-size = <0x20000>;
-		ecc-size = <0>;
+	/* Debug log buffer: earlyprintk (DEBUG_LL, patched to a RAM console)
+	 * appends the early boot log here. Plain reserved (linear-mapped,
+	 * excluded from the allocator) so the kernel can write it through the
+	 * direct map and stock Android can read it back via /dev/mem for
+	 * post-mortem of early hangs. Free on this device (stock carveouts top
+	 * out at 0x8c100000). */
+	ramlog@8f000000 {
+		reg = <0x8f000000 0x100000>;
 	};
 };
 

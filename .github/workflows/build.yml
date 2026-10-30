@@ -40,6 +40,12 @@ jobs:
           cd linux
           git log -1 --format="kernel %H %cs %s" | tee ../kernel-info.txt
 
+      - name: Apply RAM console patch
+        run: |
+          cd linux
+          git apply ../kernel-romconsole.patch
+          grep -c cf001000 arch/arm/include/debug/msm.S
+
       - name: Install board DTS
         run: |
           cp device/qcom-msm8909-hisense-m20t.dts \
