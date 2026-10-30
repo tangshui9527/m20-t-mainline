@@ -121,7 +121,7 @@ jobs:
       - name: Collect artifacts
         run: |
           mkdir -p out
-          cp m20t-$DTB.img m20t-qcom-msm8909-nokia-leo.img m20t-boot-qcdt.img \
+          cp m20t-$DTB.img m20t-qcom-msm8909-nokia-leo.img \
              linux/arch/arm/boot/zImage \
              linux/arch/arm/boot/dts/qcom/$DTB.dtb \
              initramfs/initramfs.cpio.gz \
