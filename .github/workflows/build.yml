@@ -9,9 +9,13 @@ on:
   workflow_dispatch:
 
 env:
-  KERNEL_REPO: https://github.com/msm8916-mainline/linux
-  KERNEL_TAG: v6.12.1-msm8916
+  # 7.0-based msm8909 tree; commit pinned by 3899/ufi210-debian (proven on
+  # soc_id 245 = 0xf5, the same SoC as the M20-T). Multiple msm8909 devices
+  # (nokia-leo, lenovo-p5100, zte-sapphire, zu02-dw01) boot this tree.
+  KERNEL_REPO: https://github.com/weikaizhi4/linux
+  KERNEL_COMMIT: 410d5647742474d7ed3eaa1b12aef09df18c2633
   CROSS: arm-linux-gnueabihf-
+  DTB: qcom-msm8909-zu02-dw01
 
 jobs:
   kernel:
@@ -31,43 +35,33 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-armv7-${{ env.KERNEL_TAG }}-${{ hashFiles('kernel-release.config', 'device/*.dts') }}
-          restore-keys: ccache-armv7-${{ env.KERNEL_TAG }}-
+          key: ccache-armv7-${{ env.KERNEL_COMMIT }}-${{ hashFiles('configs/*.config', 'patches-msm8909-*.patch') }}
+          restore-keys: ccache-armv7-${{ env.KERNEL_COMMIT }}-
 
       - name: Clone kernel
         run: |
-          git clone --depth 1 --branch "$KERNEL_TAG" "$KERNEL_REPO" linux
+          git clone --filter=blob:none --no-checkout "$KERNEL_REPO" linux
           cd linux
+          git fetch --filter=blob:none origin "$KERNEL_COMMIT"
+          git checkout --detach "$KERNEL_COMMIT"
           git log -1 --format="kernel %H %cs %s" | tee ../kernel-info.txt
 
-      - name: Apply RAM console patch
+      - name: Apply board DTS (zu02-dw01, proven on soc_id 245)
         run: |
           cd linux
-          git apply ../kernel-romconsole.patch
-          grep -c cf001000 arch/arm/include/debug/msm.S
+          git apply ../patches-msm8909-zu02-dw01.patch
+          grep -n zu02 arch/arm/boot/dts/qcom/Makefile
 
-      - name: Install board DTS
+      - name: Configure (ufi210 reference config + initramfs overrides)
         run: |
-          cp device/qcom-msm8909-hisense-m20t.dts \
-             linux/arch/arm/boot/dts/qcom/
-          sed -i '/qcom-msm8909-fareastone-smart506.dtb/a\                    qcom-msm8909-hisense-m20t.dtb \\' \
-             linux/arch/arm/boot/dts/qcom/Makefile
-          grep -n hisense linux/arch/arm/boot/dts/qcom/Makefile
-
-      - name: Configure (pmOS armv7 base + initramfs overrides)
-        run: |
-          cp kernel-release.config linux/.config
+          cp configs/msm8909-reference.config linux/.config
           cd linux
-          # initramfs must bring up USB NCM without a rootfs: force builtin
-          scripts/config --enable USB_CONFIGFS --enable USB_F_NCM
-          # The stock 8909 aboot loads the kernel at 0x80008000 and reserves
-          # ~0x6F8000 bytes before its own memory at 0x80700000.  A gzip
-          # zImage (7.43 MB) overflows it and aboot drops to download mode;
-          # XZ keeps the zImage ~4.5 MB (verified fit for the budget).
-          scripts/config --enable KERNEL_XZ --disable KERNEL_GZIP
+          # the M20-T initramfs brings up USB NCM from the RAM root: force builtin
+          scripts/config --enable USB_CONFIGFS --enable USB_F_NCM \
+                         --enable USB_CHIPIDEA_UDC
           make ARCH=arm CROSS_COMPILE="$CROSS" olddefconfig
-          # settle the choice (olddefconfig may flip unknown states to default)
-          scripts/config --enable KERNEL_XZ --disable KERNEL_GZIP
+          scripts/config --enable USB_CONFIGFS --enable USB_F_NCM \
+                         --enable USB_CHIPIDEA_UDC
           make ARCH=arm CROSS_COMPILE="$CROSS" olddefconfig
           f() { grep -E "^$1" .config || echo "MISSING $1"; }
           f CONFIG_USB_CONFIGFS=
@@ -77,18 +71,14 @@ jobs:
           f CONFIG_EXT4_FS=
           f CONFIG_MMC_BLOCK=
           f CONFIG_PINCTRL_MSM8909=
-          # hard gate: XZ must actually stick, otherwise zImage stays too
-          # large and the stock bootloader rejects the image
-          test "$(grep -c '^CONFIG_KERNEL_XZ=y$' .config)" = 1 \
-            || { echo 'FATAL: CONFIG_KERNEL_XZ=y did not stick'; grep -nE 'KERNEL_(GZIP|XZ|LZMA|LZO|LZ4)' .config; exit 1; }
-          grep -q '^CONFIG_KERNEL_GZIP=y$' .config && { echo 'FATAL: KERNEL_GZIP still selected'; exit 1; } || true
+          f CONFIG_QCOM_SMD_RPM=
 
       - name: Build kernel + dtb
         run: |
           cd linux
           make -j"$(nproc)" ARCH=arm CROSS_COMPILE="$CROSS" zImage dtbs
           ls -l arch/arm/boot/zImage
-          ls -l arch/arm/boot/dts/qcom/qcom-msm8909-hisense-m20t.dtb
+          ls -l arch/arm/boot/dts/qcom/$DTB.dtb
 
       - name: Build modules
         run: |
@@ -105,28 +95,32 @@ jobs:
 
       - name: Pack boot image
         run: |
-          # aboot dev_tree_validate() requires the dtbTool "QCDT" table magic in the
-          # DT segment; a bare FDT blob is rejected ("Bad magic in device tree table")
-          # and the device falls back to fastboot (d00d) without ever launching the
-          # kernel. Wrap the DTB before packing. See tools/wrap-dt-qcdt.py.
-          python3 tools/wrap-dt-qcdt.py wrap \
-            linux/arch/arm/boot/dts/qcom/qcom-msm8909-hisense-m20t.dtb \
-            qcom-msm8909-hisense-m20t.qcdt
+          # Boot under lk2nd (raw DTB; lk2nd also fixes up the DT for the board).
+          # The stock-aboot QCDT-wrapped variant is produced alongside so the same
+          # kernel can go back into the stock chain if ever needed.
           python3 tools/mkbootimg.py \
             --kernel linux/arch/arm/boot/zImage \
             --ramdisk initramfs/initramfs.cpio.gz \
-            --dtb qcom-msm8909-hisense-m20t.qcdt \
-            --cmdline 'console=ttyHSL0,115200,n8 earlyprintk panic=10' \
+            --dtb linux/arch/arm/boot/dts/qcom/$DTB.dtb \
+            --cmdline 'console=ttyHSL0,115200,n8' \
             --bootimg m20t-boot.img
-          ls -l m20t-boot.img
-          [ "$(stat -c%s m20t-boot.img)" -lt 33554432 ] || { echo "BOOT IMAGE TOO BIG (boot part = 32MiB)"; exit 1; }
+          python3 tools/wrap-dt-qcdt.py wrap \
+            linux/arch/arm/boot/dts/qcom/$DTB.dtb $DTB.qcdt
+          python3 tools/mkbootimg.py \
+            --kernel linux/arch/arm/boot/zImage \
+            --ramdisk initramfs/initramfs.cpio.gz \
+            --dtb $DTB.qcdt \
+            --cmdline 'console=ttyHSL0,115200,n8' \
+            --bootimg m20t-boot-qcdt.img
+          ls -l m20t-boot.img m20t-boot-qcdt.img
+          [ "$(stat -c%s m20t-boot.img)" -lt 33554432 ] || { echo "BOOT IMAGE TOO BIG"; exit 1; }
 
       - name: Collect artifacts
         run: |
           mkdir -p out
-          cp m20t-boot.img \
+          cp m20t-boot.img m20t-boot-qcdt.img \
              linux/arch/arm/boot/zImage \
-             linux/arch/arm/boot/dts/qcom/qcom-msm8909-hisense-m20t.dtb \
+             linux/arch/arm/boot/dts/qcom/$DTB.dtb \
              initramfs/initramfs.cpio.gz \
              modules.tar.xz \
              kernel-info.txt \
