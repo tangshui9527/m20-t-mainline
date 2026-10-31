@@ -65,9 +65,16 @@ jobs:
           # the M20-T initramfs brings up USB NCM from the RAM root: force builtin
           scripts/config --enable USB_CONFIGFS --enable USB_F_NCM \
                          --enable USB_CHIPIDEA_UDC
+          # DEBUG_LL RAM console (early-hang post-mortem, see kernel-romconsole.patch)
+          scripts/config --enable DEBUG_LL --enable DEBUG_QCOM_UARTDM \
+                         --enable EARLY_PRINTK \
+                         --set-str DEBUG_LL_INCLUDE "debug/msm.S"
           make ARCH=arm CROSS_COMPILE="$CROSS" olddefconfig
           scripts/config --enable USB_CONFIGFS --enable USB_F_NCM \
-                         --enable USB_CHIPIDEA_UDC
+                         --enable USB_CHIPIDEA_UDC \
+                         --enable DEBUG_LL --enable DEBUG_QCOM_UARTDM \
+                         --enable EARLY_PRINTK \
+                         --set-str DEBUG_LL_INCLUDE "debug/msm.S"
           make ARCH=arm CROSS_COMPILE="$CROSS" olddefconfig
           f() { grep -E "^$1" .config || echo "MISSING $1"; }
           f CONFIG_USB_CONFIGFS=
@@ -78,6 +85,10 @@ jobs:
           f CONFIG_MMC_BLOCK=
           f CONFIG_PINCTRL_MSM8909=
           f CONFIG_QCOM_SMD_RPM=
+          f CONFIG_DEBUG_LL=
+          f CONFIG_DEBUG_QCOM_UARTDM=
+          grep -q 'CONFIG_DEBUG_LL_INCLUDE="debug/msm.S"' .config \
+            || { echo 'FATAL: DEBUG_LL_INCLUDE not msm.S'; grep DEBUG_LL_INCLUDE .config; exit 1; }
 
       - name: Build kernel + dtb
         run: |
@@ -85,6 +96,14 @@ jobs:
           make -j"$(nproc)" ARCH=arm CROSS_COMPILE="$CROSS" zImage dtbs
           ls -l arch/arm/boot/zImage
           ls -l arch/arm/boot/dts/qcom/$DTB.dtb
+          # hard gate: the RAM console literal must be in the zImage
+          python3 - <<'PYEOF'
+          import sys
+          d = open('arch/arm/boot/zImage','rb').read()
+          if b'\x00\x10\xf0\xcf' not in d:
+              sys.exit('FATAL: RAM console literal 0xcf001000 missing from zImage (DEBUG_LL patch not compiled in)')
+          print('RAM console literal present in zImage OK')
+          PYEOF
 
       - name: Build modules
         run: |
@@ -112,7 +131,7 @@ jobs:
               --kernel linux/arch/arm/boot/zImage \
               --ramdisk initramfs/initramfs.cpio.gz \
               --dtb $BOARD.qcdt \
-              --cmdline 'console=ttyHSL0,115200,n8' \
+              --cmdline 'console=ttyHSL0,115200,n8 earlyprintk' \
               --bootimg m20t-$BOARD.img
           done
           ls -l m20t-*.img
