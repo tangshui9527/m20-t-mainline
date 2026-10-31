@@ -1,48 +1,33 @@
---- a/arch/arm/include/debug/msm.S
-+++ b/arch/arm/include/debug/msm.S
-@@ -20,14 +20,18 @@
- 	.macro	waituartcts,rd,rx
+--- a/arch/arm/include/debug/msm.S	2026-10-31 19:50:56
++++ b/arch/arm/include/debug/msm.S	2026-10-31 19:51:21
+@@ -21,27 +21,9 @@
  	.endm
  
  	.macro	waituarttxrdy, rd, rx
-+	@ M20-T DEBUG_LL RAM console: the "UART" is a RAM buffer
-+	@ (DEBUG_UART_PHYS=0x8f001000); polling status bits in RAM
-+	@ garbage would spin forever. No waiting needed - just store.
- 	@ check for TX_EMT in UARTDM_SR
+-	@ check for TX_EMT in UARTDM_SR
 -	ldr	\rd, [\rx, #0x08]
-+@	ldr	\rd, [\rx, #0x08]
- ARM_BE8(rev     \rd, \rd )
+-ARM_BE8(rev     \rd, \rd )
 -	tst	\rd, #0x08
 -	bne	1002f
-+@	tst	\rd, #0x08
-+@	bne	1002f
- 	@ wait for TXREADY in UARTDM_ISR
+-	@ wait for TXREADY in UARTDM_ISR
 -1001:	ldr	\rd, [\rx, #0x14]
-+@1001:	ldr	\rd, [\rx, #0x14]
- ARM_BE8(rev     \rd, \rd )
+-ARM_BE8(rev     \rd, \rd )
 -	tst	\rd, #0x80
 -	beq 	1001b
 -1002:
-+@	tst	\rd, #0x80
-+@	beq 	1001b
-+@1002:
- 	@ Clear TX_READY by writing to the UARTDM_CR register
+-	@ Clear TX_READY by writing to the UARTDM_CR register
 -	mov	\rd, #0x300
-+@	mov	\rd, #0x300
- ARM_BE8(rev     \rd, \rd )
+-ARM_BE8(rev     \rd, \rd )
 -	str	\rd, [\rx, #0x10]
-+@	str	\rd, [\rx, #0x10]
- 	@ Write 0x1 to NCF register
--	mov	\rd, #0x1
-+@	mov	\rd, #0x1
- ARM_BE8(rev     \rd, \rd )
+-	@ Write 0x1 to NCF register
+-	mov 	\rd, #0x1
+-ARM_BE8(rev     \rd, \rd )
 -	str	\rd, [\rx, #0x40]
-+@	str	\rd, [\rx, #0x40]
- 	@ UARTDM reg. Read to induce delay
+-	@ UARTDM reg. Read to induce delay
 -	ldr	\rd, [\rx, #0x08]
-+@	ldr	\rd, [\rx, #0x08]
++	@ M20-T RAM console: the debug "UART" is RAM at DEBUG_UART_PHYS;
++	@ status polling and CR/NCF side-effect writes would spin on / corrupt
++	@ RAM - all disabled. The caller just stores the char.
  	.endm
  
  	.macro	busyuart, rd, rx
-+	@ RAM console: no busy wait (would read garbage)
- 	.endm
