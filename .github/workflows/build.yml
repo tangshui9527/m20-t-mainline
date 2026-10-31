@@ -97,16 +97,16 @@ jobs:
       - name: Build kernel + dtb
         run: |
           cd linux
-          make -j"$(nproc)" ARCH=arm CROSS_COMPILE="$CROSS" zImage dtbs
+          make -j"$(nproc)" ARCH=arm CROSS_COMPILE="$CROSS" zImage Image dtbs
           ls -l arch/arm/boot/zImage
           ls -l arch/arm/boot/dts/qcom/$DTB.dtb
-          # hard gate: the RAM console literal must be in the zImage
+          # hard gate: the RAM console literal must be in the uncompressed Image
           python3 - <<'PYEOF'
           import sys
-          d = open('arch/arm/boot/zImage','rb').read()
+          d = open('arch/arm/boot/Image','rb').read()
           if b'\x00\x10\xf0\xcf' not in d:
-              sys.exit('FATAL: RAM console literal 0xcf001000 missing from zImage (DEBUG_LL patch not compiled in)')
-          print('RAM console literal present in zImage OK')
+              sys.exit('FATAL: RAM console literal 0xcf001000 missing from Image (DEBUG_LL patch not compiled in)')
+          print('RAM console literal present in Image OK')
           PYEOF
 
       - name: Build modules
