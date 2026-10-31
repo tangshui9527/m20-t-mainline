@@ -50,7 +50,7 @@ jobs:
         run: |
           cd linux
           git apply ../kernel-romconsole.patch
-          grep -c cf001000 arch/arm/include/debug/msm.S
+          grep -c "M20-T RAM console" arch/arm/include/debug/msm.S
 
       - name: Apply board DTS (zu02-dw01, proven on soc_id 245)
         run: |
