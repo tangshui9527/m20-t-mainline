@@ -66,12 +66,15 @@ jobs:
           scripts/config --enable USB_CONFIGFS --enable USB_F_NCM \
                          --enable USB_CHIPIDEA_UDC
           # DEBUG_LL RAM console (early-hang post-mortem, see kernel-romconsole.patch)
-          scripts/config --enable DEBUG_LL --enable DEBUG_QCOM_UARTDM \
+          # DEBUG_LL depends on DEBUG_KERNEL - must enable both or olddefconfig drops it
+          scripts/config --enable DEBUG_KERNEL \
+                         --enable DEBUG_LL --enable DEBUG_QCOM_UARTDM \
                          --enable EARLY_PRINTK \
                          --set-str DEBUG_LL_INCLUDE "debug/msm.S"
           make ARCH=arm CROSS_COMPILE="$CROSS" olddefconfig
           scripts/config --enable USB_CONFIGFS --enable USB_F_NCM \
                          --enable USB_CHIPIDEA_UDC \
+                         --enable DEBUG_KERNEL \
                          --enable DEBUG_LL --enable DEBUG_QCOM_UARTDM \
                          --enable EARLY_PRINTK \
                          --set-str DEBUG_LL_INCLUDE "debug/msm.S"
@@ -85,6 +88,7 @@ jobs:
           f CONFIG_MMC_BLOCK=
           f CONFIG_PINCTRL_MSM8909=
           f CONFIG_QCOM_SMD_RPM=
+          f CONFIG_DEBUG_KERNEL=
           f CONFIG_DEBUG_LL=
           f CONFIG_DEBUG_QCOM_UARTDM=
           grep -q 'CONFIG_DEBUG_LL_INCLUDE="debug/msm.S"' .config \
