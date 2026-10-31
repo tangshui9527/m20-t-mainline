@@ -1,71 +1,48 @@
 --- a/arch/arm/include/debug/msm.S
 +++ b/arch/arm/include/debug/msm.S
-@@ -1,47 +1,38 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
- /*
-- *
-- * Copyright (C) 2007 Google, Inc.
-- * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
-- * Author: Brian Swetland <swetland@google.com>
-+ * M20-T debug: DEBUG_LL redirected to a fixed RAM buffer instead of UART
-+ * (no UART wired on this headless port). Buffer: phys 0x8f001000, size
-+ * ~0xff000, reserved via the device tree (linear-mapped, no allocator).
-+ * Cell at 0x8f001000 (VA 0xcf001000) holds the next-write VA.
-+ * PAGE_OFFSET 0xc0000000, PHYS_OFFSET 0x80000000.
-  */
- 
- 	.macro	addruart, rp, rv, tmp
--	ldr	\rp, =CONFIG_DEBUG_UART_PHYS
--	ldr	\rv, =CONFIG_DEBUG_UART_VIRT
-+	ldr	\rv, =0xcf001000
-+	ldr	\rv, [\rv]
-+	ldr	\rp, =0xcf001008
-+	cmp	\rv, \rp
-+	bhs	1002f
-+	mov	\rv, \rp
-+	b	1003f
-+1002:	ldr	\tmp, =0xcf0fffff
-+	cmp	\rv, \tmp
-+	bls	1003f
-+	mov	\rv, \rp
-+1003:
- 	.endm
- 
- 	.macro	senduart, rd, rx
--ARM_BE8(rev	\rd, \rd )
--	@ Write the 1 character to UARTDM_TF
--	str	\rd, [\rx, #0x70]
-+	strb	\rd, [\rx]
-+	add	\rx, \rx, #1
-+	ldr	\rd, =0xcf001000
-+	str	\rx, [\rd]
- 	.endm
- 
+@@ -20,14 +20,18 @@
  	.macro	waituartcts,rd,rx
  	.endm
  
  	.macro	waituarttxrdy, rd, rx
--	@ check for TX_EMT in UARTDM_SR
++	@ M20-T DEBUG_LL RAM console: the "UART" is a RAM buffer
++	@ (DEBUG_UART_PHYS=0x8f001000); polling status bits in RAM
++	@ garbage would spin forever. No waiting needed - just store.
+ 	@ check for TX_EMT in UARTDM_SR
 -	ldr	\rd, [\rx, #0x08]
--ARM_BE8(rev     \rd, \rd )
++@	ldr	\rd, [\rx, #0x08]
+ ARM_BE8(rev     \rd, \rd )
 -	tst	\rd, #0x08
 -	bne	1002f
--	@ wait for TXREADY in UARTDM_ISR
++@	tst	\rd, #0x08
++@	bne	1002f
+ 	@ wait for TXREADY in UARTDM_ISR
 -1001:	ldr	\rd, [\rx, #0x14]
--ARM_BE8(rev     \rd, \rd )
++@1001:	ldr	\rd, [\rx, #0x14]
+ ARM_BE8(rev     \rd, \rd )
 -	tst	\rd, #0x80
 -	beq 	1001b
 -1002:
--	@ Clear TX_READY by writing to the UARTDM_CR register
++@	tst	\rd, #0x80
++@	beq 	1001b
++@1002:
+ 	@ Clear TX_READY by writing to the UARTDM_CR register
 -	mov	\rd, #0x300
--ARM_BE8(rev     \rd, \rd )
++@	mov	\rd, #0x300
+ ARM_BE8(rev     \rd, \rd )
 -	str	\rd, [\rx, #0x10]
--	@ Write 0x1 to NCF register
--	mov 	\rd, #0x1
--ARM_BE8(rev     \rd, \rd )
++@	str	\rd, [\rx, #0x10]
+ 	@ Write 0x1 to NCF register
+-	mov	\rd, #0x1
++@	mov	\rd, #0x1
+ ARM_BE8(rev     \rd, \rd )
 -	str	\rd, [\rx, #0x40]
--	@ UARTDM reg. Read to induce delay
++@	str	\rd, [\rx, #0x40]
+ 	@ UARTDM reg. Read to induce delay
 -	ldr	\rd, [\rx, #0x08]
++@	ldr	\rd, [\rx, #0x08]
  	.endm
  
  	.macro	busyuart, rd, rx
++	@ RAM console: no busy wait (would read garbage)
+ 	.endm
