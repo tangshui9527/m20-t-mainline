@@ -52,6 +52,12 @@ jobs:
           git apply ../kernel-romconsole.patch
           grep -c "M20-T RAM console" arch/arm/include/debug/msm.S
 
+      - name: Apply early markers patch
+        run: |
+          cd linux
+          git apply ../kernel-early-markers.patch
+          grep -c "0x8f000000" arch/arm/boot/compressed/misc.c
+
       - name: Apply board DTS (zu02-dw01, proven on soc_id 245)
         run: |
           cd linux
