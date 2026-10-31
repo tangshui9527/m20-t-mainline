@@ -65,12 +65,15 @@ jobs:
           # the M20-T initramfs brings up USB NCM from the RAM root: force builtin
           scripts/config --enable USB_CONFIGFS --enable USB_F_NCM \
                          --enable USB_CHIPIDEA_UDC
-          # DEBUG_LL RAM console (early-hang post-mortem, see kernel-romconsole.patch)
-          # DEBUG_LL depends on DEBUG_KERNEL - must enable both or olddefconfig drops it
+          # DEBUG_LL RAM console (early-hang post-mortem, see kernel-romconsole.patch):
+          # the "debug UART" IS a RAM buffer at phys 0x8f001000 (lk2nd oem debug
+          # readl can read it back after a hang). DEBUG_LL depends on DEBUG_KERNEL.
           scripts/config --enable DEBUG_KERNEL \
                          --enable DEBUG_LL --enable DEBUG_QCOM_UARTDM \
                          --enable EARLY_PRINTK \
-                         --set-str DEBUG_LL_INCLUDE "debug/msm.S"
+                         --set-str DEBUG_LL_INCLUDE "debug/msm.S" \
+                         --set-val DEBUG_UART_PHYS 0x8f001000 \
+                         --set-val DEBUG_UART_VIRT 0xcf001000
           make ARCH=arm CROSS_COMPILE="$CROSS" olddefconfig
           scripts/config --enable USB_CONFIGFS --enable USB_F_NCM \
                          --enable USB_CHIPIDEA_UDC \
@@ -91,8 +94,9 @@ jobs:
           f CONFIG_DEBUG_KERNEL=
           f CONFIG_DEBUG_LL=
           f CONFIG_DEBUG_QCOM_UARTDM=
-          grep -q 'CONFIG_DEBUG_LL_INCLUDE="debug/msm.S"' .config \
-            || { echo 'FATAL: DEBUG_LL_INCLUDE not msm.S'; grep DEBUG_LL_INCLUDE .config; exit 1; }
+          f CONFIG_DEBUG_UART_PHYS=
+          grep -q 'CONFIG_DEBUG_UART_PHYS=0x8f001000' .config \
+            || { echo 'FATAL: DEBUG_UART_PHYS not 0x8f001000'; grep DEBUG_UART .config; exit 1; }
 
       - name: Build kernel + dtb
         run: |
