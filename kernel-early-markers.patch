@@ -1,34 +1,31 @@
 --- a/arch/arm/boot/compressed/misc.c
 +++ b/arch/arm/boot/compressed/misc.c
-@@ -132,6 +132,9 @@ void
- decompress_kernel(unsigned long output_start, unsigned long free_mem_ptr_p,
- 		unsigned long free_mem_ptr_end_p,
- 		int arch_id)
+@@ -135,6 +135,9 @@
  {
  	int ret;
  
-+	/* M20-T early-hang bisection: pre-MMU direct PA store (no console yet) */
++	/* M20-T early-hang bisection: pre-MMU direct PA store */
 +	*(volatile unsigned char *)0x8f000000 = 0xA1;
 +
  	output_data		= (unsigned char *)output_start;
  	free_mem_ptr		= free_mem_ptr_p;
  	free_mem_end_ptr	= free_mem_ptr_end_p;
-@@ -152,6 +155,9 @@ decompress_kernel(unsigned long output_start, unsigned long free_mem_ptr_p,
- 	if (ret)
+@@ -152,6 +155,8 @@
  		error("decompressor returned an error");
  	else
  		putstr(" done, booting the kernel.\n");
 +
 +	*(volatile unsigned char *)0x8f000001 = 0xA2;
  }
+ 
+ void __fortify_panic(const u8 reason, size_t avail, size_t size)
 --- a/init/main.c
 +++ b/init/main.c
-@@ -1008,6 +1008,9 @@ asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
+@@ -1010,6 +1010,9 @@
  	char *command_line;
  	char *after_dashes;
  
-+	/* M20-T early-hang bisection: through head.S-mapped debug window
-+	 * (CONFIG_DEBUG_UART_VIRT 0xcf001000 = phys 0x8f001000) */
++	/* M20-T: through the head.S debug mapping (DEBUG_UART_VIRT) */
 +	*(volatile unsigned char *)0xcf001000 = 0xA5;
 +
  	set_task_stack_end_magic(&init_task);
